@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HydroMind - Water Tracker & Reminder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.35s;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center py-8 px-4">
+
+    <div class="max-w-md w-full bg-slate-800/50 backdrop-blur-md rounded-3xl p-6 border border-slate-700/50 shadow-xl">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-blue-400">HydroMind</h1>
+                <p class="text-xs text-slate-400">Stay hydrated, stay sharp</p>
+            </div>
+            <button id="notiBtn" class="p-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 transition text-sm flex items-center gap-2">
+                <span>🔔</span> <span id="notiStatus">Enable Alerts</span>
+            </button>
+        </div>
+
+        <div class="relative flex flex-col items-center justify-center my-8">
+            <svg class="w-64 h-64">
+                <circle class="text-slate-700" stroke-width="12" stroke="currentColor" fill="transparent" r="110" cx="128" cy="128"/>
+                <circle id="progressCircle" class="text-blue-500 progress-ring__circle" stroke-width="12" stroke-linecap="round" stroke="currentColor" fill="transparent" r="110" cx="128" cy="128"/>
+            </svg>
+            <div class="absolute text-center">
+                <span id="currentAmount" class="text-4xl font-extrabold block">0</span>
+                <span class="text-xs uppercase tracking-widest text-slate-400 font-medium">of <span id="targetAmount">3500</span> ml</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 mb-6">
+            <button onclick="addWater(250)" class="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 py-3 rounded-2xl font-medium transition active:scale-95">
+                +250 ml
+                <span class="block text-xs text-blue-400/70 font-normal">Glass</span>
+            </button>
+            <button onclick="addWater(500)" class="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 py-3 rounded-2xl font-medium transition active:scale-95">
+                +500 ml
+                <span class="block text-xs text-blue-400/70 font-normal">Bottle</span>
+            </button>
+            <button onclick="addWater(750)" class="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 py-3 rounded-2xl font-medium transition active:scale-95">
+                +750 ml
+                <span class="block text-xs text-blue-400/70 font-normal">Large</span>
+            </button>
+        </div>
+
+        <div class="bg-slate-800/80 rounded-2xl p-4 border border-slate-700/50 mb-6">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-sm font-semibold text-slate-300">Smart Reminder</h3>
+                <span id="timerDisplay" class="text-xs font-mono bg-slate-700 px-2 py-0.5 rounded text-blue-400">Interval: 60m</span>
+            </div>
+            <div class="flex gap-2 mb-3">
+                <select id="intervalSelect" class="bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-sm flex-grow focus:outline-none focus:border-blue-500 text-slate-200">
+                    <option value="30">Every 30 Minutes</option>
+                    <option value="60" selected>Every 60 Minutes</option>
+                    <option value="90">Every 90 Minutes</option>
+                    <option value="120">Every 120 Minutes</option>
+                </select>
+                <button id="resetBtn" onclick="resetTracker()" class="bg-slate-700 hover:bg-red-900/30 hover:text-red-400 border border-transparent hover:border-red-500/20 px-4 rounded-xl text-sm transition">
+                    Reset
+                </button>
+            </div>
+            <button onclick="downloadSelf()" class="w-full bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-300 text-xs py-2.5 rounded-xl font-medium transition flex items-center justify-center gap-2">
+                💾 Download Desktop App (.html file)
+            </button>
+        </div>
+
+        <div>
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="text-sm font-semibold text-slate-400">Today's Log</h3>
+                <button onclick="downloadHistory()" class="text-xs text-blue-400 hover:text-blue-300 font-medium transition flex items-center gap-1">
+                    📥 Download Data Log
+                </button>
+            </div>
+            <div id="logContainer" class="space-y-2 max-h-32 overflow-y-auto pr-1 text-sm">
+                <p id="emptyLog" class="text-slate-500 italic text-xs text-center py-4">No water logged yet today.</p>
+            </div>
+        </div>
+    </div>
+
+    <audio id="chime" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-500.wav" preload="auto"></audio>
+
+    <script>
+        // State Management (Target initialized to 3500)
+        let state = {
+            current: 0,
+            target: 3500,
+            intervalMinutes: 60,
+            logs: []
+        };
+
+        // DOM Elements
+        const progressCircle = document.getElementById('progressCircle');
+        const currentAmountEl = document.getElementById('currentAmount');
+        const notiBtn = document.getElementById('notiBtn');
+        const notiStatus = document.getElementById('notiStatus');
+        const intervalSelect = document.getElementById('intervalSelect');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const logContainer = document.getElementById('logContainer');
+        const emptyLog = document.getElementById('emptyLog');
+        const chime = document.getElementById('chime');
+
+        // Circular Progress Variables
+        const radius = progressCircle.r.baseVal.value;
+        const circumference = radius * 2 * Math.PI;
+        progressCircle.style.strokeDasharray = `${circumference} ${circumference}`;
+
+        // Initialize App
+        function init() {
+            loadLocalStorage();
+            updateUI();
+            setupReminders();
+            
+            // Event Listeners
+            intervalSelect.addEventListener('change', (e) => {
+                state.intervalMinutes = parseInt(e.target.value);
+                saveLocalStorage();
+                setupReminders();
+                updateUI();
+            });
+
+            notiBtn.addEventListener('click', requestNotificationPermission);
+            
+            if (Notification.permission === 'granted') {
+                notiStatus.textContent = 'Alerts Active';
+                notiBtn.classList.replace('bg-slate-700', 'bg-blue-600/20');
+                notiBtn.classList.add('text-blue-400', 'border', 'border-blue-500/30');
+            }
+        }
+
+        // UI Updates
+        function updateUI() {
+            currentAmountEl.textContent = state.current;
+            timerDisplay.textContent = `Interval: ${state.intervalMinutes}m`;
+            
+            // Update Circle Progress
+            const offset = circumference - (Math.min(state.current, state.target) / state.target) * circumference;
+            progressCircle.style.strokeDashoffset = offset;
+
+            // Update Log
+            if (state.logs.length === 0) {
+                emptyLog.style.display = 'block';
+                const logs = logContainer.querySelectorAll('.log-item');
+                logs.forEach(l => l.remove());
+            } else {
+                emptyLog.style.display = 'none';
+                const logs = logContainer.querySelectorAll('.log-item');
+                logs.forEach(l => l.remove());
+                
+                state.logs.slice().reverse().forEach(log => {
+                    const item = document.createElement('div');
+                    item.className = 'log-item flex justify-between items-center bg-slate-800/40 px-3 py-2 rounded-xl border border-slate-700/30 text-xs text-slate-300';
+                    item.innerHTML = `<span>💧 Added <b>${log.amount}ml</b></span> <span class="text-slate-500">${log.time}</span>`;
+                    logContainer.appendChild(item);
+                });
+            }
+        }
+
+        // Logic Functions
+        function addWater(amount) {
+            state.current += amount;
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            state.logs.push({ amount, time: timeStr });
+            saveLocalStorage();
+            updateUI();
+            
+            // Soft feedback reset of reminder timer when user drinks water manually
+            setupReminders();
+        }
+
+        function resetTracker() {
+            if(confirm("Reset today's fluid intake data?")) {
+                state.current = 0;
+                state.logs = [];
+                saveLocalStorage();
+                updateUI();
+            }
+        }
+
+        // Feature: Download the Software code directly to PC
+        function downloadSelf() {
+            const htmlContent = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: "text/html" });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "HydroMind_App.html";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        // Feature: Download History Logs as Text
+        function downloadHistory() {
+            if (state.logs.length === 0) {
+                alert("No logged data available to export yet.");
+                return;
+            }
+
+            let fileContent = `HYDROMIND WATER INTAKE REPORT\nDate: ${new Date().toDateString()}\n`;
+            fileContent += `Progress: ${state.current} / ${state.target} ml\n`;
+            fileContent += `=========================================\n\n`;
+            
+            state.logs.forEach((log, index) => {
+                fileContent += `[Entry #${index + 1}] Time: ${log.time} | Logged: ${log.amount}ml\n`;
+            });
+
+            const blob = new Blob([fileContent], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
+
+            const tempLink = document.createElement("a");
+            tempLink.href = url;
+            tempLink.download = `hydration_log_${new Date().toISOString().split('T')[0]}.txt`;
+            
+            document.body.appendChild(tempLink);
+            tempLink.click();
+            document.body.removeChild(tempLink);
+            URL.revokeObjectURL(url);
+        }
+
+        // Notification System
+        let reminderIntervalId = null;
+
+        function requestNotificationPermission() {
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    notiStatus.textContent = 'Alerts Active';
+                    notiBtn.classList.replace('bg-slate-700', 'bg-blue-600/20');
+                    notiBtn.classList.add('text-blue-400', 'border', 'border-blue-500/30');
+                    new Notification("HydroMind", { body: "Awesome! Reminders are now configured.", icon: "https://cdn-icons-png.flaticon.com/512/3100/3100566.png" });
+                }
+            });
+        }
+
+        // Sets up background interval rules
+        function setupReminders() {
+            if (reminderIntervalId) clearInterval(reminderIntervalId);
+            
+            const ms = state.intervalMinutes * 60 * 1000;
+            reminderIntervalId = setInterval(() => {
+                triggerReminder();
+            }, ms);
+        }
+
+        function triggerReminder() {
+            chime.play().catch(e => console.log("Audio delayed until interaction."));
+            
+            if (Notification.permission === 'granted') {
+                new Notification("Hydration Reminder! 💧", {
+                    body: `It's time to drink some water. Current progress: ${state.current}/${state.target} ml.`,
+                    icon: "https://cdn-icons-png.flaticon.com/512/3100/3100566.png"
+                });
+            } else {
+                alert("💧 Time to hydrate! Grab a glass of water.");
+            }
+        }
+
+        // Data Persistence
+        function saveLocalStorage() {
+            const today = new Date().toDateString();
+            localStorage.setItem('hydromind_data_3500', JSON.stringify({
+                date: today,
+                state: state
+            }));
+        }
+
+        function loadLocalStorage() {
+            const saved = localStorage.getItem('hydromind_data_3500');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                const today = new Date().toDateString();
+                if (parsed.date === today) {
+                    state = parsed.state;
+                    intervalSelect.value = state.intervalMinutes;
+                }
+            }
+        }
+
+        // Start App Run
+        init();
+    </script>
+</body>
+</html>
